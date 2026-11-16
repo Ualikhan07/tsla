@@ -11,6 +11,8 @@
     <script src="https://www.youtube.com/iframe_api"></script>
     <!-- SponsorBlock for skipping sponsored segments -->
     <script src="sponsorblock.js"></script>
+    <!-- wBlock Core Ad-Shield, Multi-Mirror Tube Cleaner & DeArrow Engine -->
+    <script src="wblock.js?v=1.0"></script>
 </head>
 <body class="carplay-theme dedicated-cinema-mode">
     <div id="cinema-app-root" class="cinema-app-container">
@@ -37,7 +39,7 @@
 
             <!-- HEADER ACTIONS: wBLOCK STATUS & LOGIN -->
             <div class="cinema-header-actions">
-                <div class="wblock-badge" id="wblock-badge" title="Статус защиты wBlock (нажмите для смены режима: Без рекламы / YouTube HD)" onclick="toggleCinemaEngine()">
+                <div class="wblock-badge" id="wblock-badge" title="Панель защиты wBlock Ad-Shield (нажмите для открытия настроек и статистики)" onclick="wBlock.openDashboard()">
                     <span class="wblock-icon">🛡️</span>
                     <span class="wblock-title">wBlock</span>
                     <span class="wblock-chip" id="wblock-stat">0 рекламы (Clean)</span>
@@ -77,14 +79,14 @@
             <div class="stage-close-bar">
                 <div class="now-playing-title" id="now-playing-title">Воспроизведение...</div>
                 <div class="player-engine-selector" id="player-engine-selector">
-                    <button class="engine-pill-btn" id="engine-btn-server" onclick="setCinemaEngine('server')" title="Вариант 1: Свой сервер (D/R WebGL Canvas + Audio)">
+                    <button class="engine-pill-btn active" id="engine-btn-clean" onclick="setCinemaEngine('clean')" title="Режим «Без рекламы»: мульти-зеркальный Clean поток wBlock (Invidious / Piped)">
+                        🛡️ Clean (Без рекламы)
+                    </button>
+                    <button class="engine-pill-btn" id="engine-btn-youtube" onclick="setCinemaEngine('youtube')" title="Официальный плеер YouTube с активным Ad-Shield">
+                        📺 YouTube HD
+                    </button>
+                    <button class="engine-pill-btn" id="engine-btn-server" onclick="setCinemaEngine('server')" title="Вариант со своим сервером (D/R WebGL Canvas)">
                         🚀 Свой Сервер
-                    </button>
-                    <button class="engine-pill-btn active" id="engine-btn-cobalt" onclick="setCinemaEngine('cobalt')" title="Вариант 2: Cobalt API (0 рекламы + D/R Canvas)">
-                        ⚡ Cobalt API
-                    </button>
-                    <button class="engine-pill-btn" id="engine-btn-direct" onclick="setCinemaEngine('direct')" title="Вариант 3: Прямой поток / YouTube HD (Iframe)">
-                        📺 Прямой / YouTube
                     </button>
                     <button class="engine-pill-btn" id="btn-config-server" onclick="openBackendConfigModal()" title="Настроить адрес своего сервера" style="padding: 5px 8px;">
                         ⚙️
@@ -92,7 +94,7 @@
                 </div>
                 <div class="stage-status-badge" id="stage-status-badge" style="background: rgba(48, 209, 88, 0.15); border-color: rgba(48, 209, 88, 0.4); color: #4ade80;">
                     <span class="badge-dot"></span>
-                    <span id="engine-status-text">⚡ Cobalt API: 0 рекламы (D/R Canvas)</span>
+                    <span id="engine-status-text">🛡️ wBlock: Без рекламы (Clean)</span>
                 </div>
                 <button class="btn-close-stage" id="btn-close-stage" title="Свернуть">✕</button>
             </div>

@@ -168,16 +168,18 @@ let ogvPlayerInstance = null;
 let ogvSyncInterval = null;
 
 // 3-Engine Switcher:
-// 1. 'server' : Свой прокси-сервер (D/R WebGL Canvas + Audio) - Teslatelek-Style
-// 2. 'cobalt' : Публичный Cobalt API (D/R WebGL Canvas + Audio) - 0 Ads, no server needed
-// 3. 'direct' : Прямой медиапоток / YouTube Iframe HD (SponsorBlock)
-let currentCinemaEngine = localStorage.getItem('cinema_player_engine') || 'cobalt';
+// 1. 'clean'  : Режим без рекламы (wBlock Multi-Mirror: Invidious / Piped с авто-отказоустойчивостью)
+// 2. 'youtube': Официальный поток YouTube HD с активным фильтром wBlock Ad-Shield & SponsorBlock
+// 3. 'server' : Свой прокси-сервер (D/R WebGL Canvas + Audio) для поездки в Drive & Reverse
+let currentCinemaEngine = localStorage.getItem('cinema_player_engine') || 'clean';
+if (currentCinemaEngine === 'cobalt') currentCinemaEngine = 'clean';
+if (currentCinemaEngine === 'direct') currentCinemaEngine = 'youtube';
 let isYTAPILoaded = false;
 
 window.onYouTubeIframeAPIReady = function() {
     console.log("[Tesla Cinema] YouTube IFrame API Ready");
     isYTAPILoaded = true;
-    if (currentPlayingVideoId && currentCinemaEngine === 'direct' && !ytPlayer) {
+    if (currentPlayingVideoId && currentCinemaEngine === 'youtube' && !ytPlayer) {
         bindYTPlayer();
     }
 };
@@ -208,7 +210,10 @@ function cleanupCurrentPlayer() {
 window.cleanupCurrentPlayer = cleanupCurrentPlayer;
 
 function setCinemaEngine(engine) {
-    if (engine !== 'server' && engine !== 'cobalt' && engine !== 'direct') return;
+    if (engine === 'cobalt') engine = 'clean';
+    if (engine === 'direct') engine = 'youtube';
+    if (engine !== 'server' && engine !== 'clean' && engine !== 'youtube') return;
+
     currentCinemaEngine = engine;
     localStorage.setItem('cinema_player_engine', engine);
     updateEngineUI();
@@ -219,9 +224,9 @@ function setCinemaEngine(engine) {
     }
 
     const titles = {
-        'server': '🚀 Режим «Свой Сервер» (D/R WebGL Canvas)',
-        'cobalt': '⚡ Режим «Cobalt API» (0 рекламы + D/R Canvas)',
-        'direct': '📺 Режим «YouTube HD / Прямой URL»'
+        'clean': '🛡️ Режим «Clean (Без рекламы)» активен',
+        'youtube': '📺 Режим «YouTube HD + wBlock Ad-Shield» активен',
+        'server': '🚀 Режим «Свой Сервер» (D/R WebGL Canvas) активен'
     };
     wBlock.showCustomToast(titles[engine] || engine);
 
@@ -233,38 +238,41 @@ function setCinemaEngine(engine) {
 window.setCinemaEngine = setCinemaEngine;
 
 function toggleCinemaEngine() {
-    const sequence = ['cobalt', 'server', 'direct'];
-    const nextIdx = (sequence.indexOf(currentCinemaEngine) + 1) % sequence.length;
+    const sequence = ['clean', 'youtube', 'server'];
+    const curIdx = sequence.indexOf(currentCinemaEngine);
+    const nextIdx = (curIdx + 1) % sequence.length;
     setCinemaEngine(sequence[nextIdx]);
 }
 window.toggleCinemaEngine = toggleCinemaEngine;
 
 function updateEngineUI() {
+    const btnClean = document.getElementById('engine-btn-clean');
+    const btnYT = document.getElementById('engine-btn-youtube');
     const btnServer = document.getElementById('engine-btn-server');
-    const btnCobalt = document.getElementById('engine-btn-cobalt');
-    const btnDirect = document.getElementById('engine-btn-direct');
     const badgeText = document.getElementById('engine-status-text');
 
-    if (btnServer) btnServer.classList.toggle('active', currentCinemaEngine === 'server');
-    if (btnCobalt) btnCobalt.classList.toggle('active', currentCinemaEngine === 'cobalt');
-    if (btnDirect) btnDirect.classList.toggle('active', currentCinemaEngine === 'direct');
+    const isClean = currentCinemaEngine === 'clean';
+    const isYT = currentCinemaEngine === 'youtube';
+    const isServer = currentCinemaEngine === 'server';
+
+    if (btnClean) btnClean.classList.toggle('active', isClean);
+    if (btnYT) btnYT.classList.toggle('active', isYT);
+    if (btnServer) btnServer.classList.toggle('active', isServer);
 
     if (badgeText) {
-        if (currentCinemaEngine === 'server') {
+        if (isClean) {
+            const mirrorName = (wBlock && wBlock.mirrors && wBlock.mirrors[wBlock.currentMirrorIndex])
+                ? wBlock.mirrors[wBlock.currentMirrorIndex].name.split(' ')[0]
+                : 'Invidious';
+            badgeText.innerText = `🛡️ wBlock: Без рекламы (${mirrorName})`;
+        } else if (isServer) {
             badgeText.innerText = "🚀 Свой Сервер: D/R Canvas (0 Ads)";
-        } else if (currentCinemaEngine === 'cobalt') {
-            badgeText.innerText = "⚡ Cobalt API: D/R Canvas (0 Ads)";
         } else {
-            badgeText.innerText = "📺 YouTube HD + SponsorBlock";
+            badgeText.innerText = "📺 YouTube HD + wBlock Ad-Shield";
         }
     }
-    const statEl = document.getElementById('wblock-stat');
-    if (statEl) {
-        if (currentCinemaEngine === 'server' || currentCinemaEngine === 'cobalt') {
-            statEl.innerText = "D/R Canvas (0 Ads)";
-        } else {
-            statEl.innerText = `${wBlock.skippedCount} ad/skip`;
-        }
+    if (wBlock && typeof wBlock.updateUI === 'function') {
+        wBlock.updateUI();
     }
 }
 window.updateEngineUI = updateEngineUI;
@@ -1663,6 +1671,13 @@ function renderYouTubeCards(videos, { append = false } = {}) {
             </div>
         `;
 
+        // Apply wBlock DeArrow (clean clickbait title and thumbnail frame)
+        const titleEl = card.querySelector('.yt-card-title');
+        const thumbEl = card.querySelector('.yt-thumb-wrap img');
+        if (window.wBlock && typeof window.wBlock.applyDeArrow === 'function') {
+            window.wBlock.applyDeArrow(id, titleEl, thumbEl);
+        }
+
         card.addEventListener('click', () => {
             currentQueueIndex = queueOffset + index;
             playYouTubeVideoById(id, title, author, durationSec);
@@ -1675,376 +1690,15 @@ function renderYouTubeCards(videos, { append = false } = {}) {
 // =========================================
 // wBLOCK: AD & SPONSORBLOCK INTEGRATION
 // =========================================
-const wBlock = {
-    enabled: true,
-    sponsorBlockEnabled: true,
-    skippedCount: 0,
-    currentSegments: [],
-    markersRendered: false,
-    lastSkippedSegment: null,
-    skippedSegmentIds: new Set(),
-    isSkipping: false,
-    toastTimer: null,
-    isAdAccelerated: false,
-    savedSpeed: 1.0,
-    autoSkipTimer: null,
-    sb: null,
-    fetchAbortController: null,
-    fetchRequestId: 0,
-
-    initSponsorBlock(playerInstance) {
-        if (typeof SponsorBlock === 'undefined') return;
-        if (!this.sb) {
-            const counterEl = document.getElementById('wblock-stat');
-            this.sb = new SponsorBlock(playerInstance || ytPlayer, {
-                categories: ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro'],
-                minDuration: 0.8,
-                getCurrentTime: () => getCurrentTime(),
-                seekTo: (time) => seekTo(time),
-                onSkip: ({ category, from, to, count }) => {
-                    this.skippedCount = count;
-                    this.lastSkippedSegment = this.sb.lastSkip;
-                    if (counterEl && currentCinemaEngine !== 'clean') {
-                        counterEl.textContent = `🛡️ SponsorBlock ${count}`;
-                    }
-                    this.showToast(category);
-                },
-                onUndo: ({ category, count }) => {
-                    this.skippedCount = count;
-                    this.lastSkippedSegment = null;
-                    this.updateUI();
-                    const toast = document.getElementById('wblock-skip-toast');
-                    if (toast) toast.style.display = 'none';
-                }
-            });
-            window.sb = this.sb;
-            if (this.sb.count > 0) {
-                this.skippedCount = this.sb.count;
-            }
-        } else if (playerInstance) {
-            this.sb.setPlayer(playerInstance);
-        }
-    },
-
-    handleAdDetected() {
-        if (!this.enabled || this.isAdAccelerated) return;
-        this.isAdAccelerated = true;
-        this.savedSpeed = currentSpeed || 1.0;
-        console.log("[wBlock] YouTube video ad detected! Muting ad audio...");
-
-        // 1. Mute ad immediately so driver isn't disturbed by loud commercials
-        sendYTCommand('mute', []);
-
-        // Note: Do NOT set playback rate to 2x on Tesla MCU! 
-        // 2x speed stalls hardware video decoding on Tesla Linux GPU, causing video to freeze on 1 frame!
-
-        // 2. Update stats & toast
-        this.skippedCount++;
-        this.updateUI();
-        this.showToast('video-ad');
-
-        // 3. Floating Ad Shield with direct 1-tap Clean Mode switch & skip button
-        let shield = document.getElementById('ad-shield');
-        if (!shield) {
-            shield = document.createElement('div');
-            shield.id = 'ad-shield';
-            shield.className = 'ad-shield';
-            const stage = document.getElementById('cinema-stage');
-            if (stage) stage.appendChild(shield);
-        }
-        shield.innerHTML = `
-            <div class="ad-shield-content">
-                <span class="ad-shield-badge">🛡️ Реклама на YouTube (звук приглушен)</span>
-                <button class="ad-switch-clean-btn" onclick="setCinemaEngine('clean')" title="Переключить на плеер без рекламы">
-                    🛡️ Без рекламы
-                </button>
-                <button class="ad-skip-force-btn" onclick="skipAdForce()">
-                    ⏭️ Пропустить
-                </button>
-            </div>
-        `;
-        shield.style.display = 'flex';
-    },
-
-    restoreAfterAd() {
-        if (!this.isAdAccelerated) return;
-        this.isAdAccelerated = false;
-        if (this.autoSkipTimer) clearTimeout(this.autoSkipTimer);
-        console.log("[wBlock] Ad ended, restoring normal playback.");
-        sendYTCommand('unMute', []);
-        const shield = document.getElementById('ad-shield');
-        if (shield) shield.style.display = 'none';
-    },
-
-    async fetchSponsorSegments(videoId) {
-        this.currentSegments = [];
-        this.clearMarkers();
-        this.skippedSegmentIds = new Set();
-        this.lastSkippedSegment = null;
-        if (!videoId || !this.sponsorBlockEnabled) return [];
-
-        if (this.fetchAbortController) {
-            try { this.fetchAbortController.abort(); } catch(e) {}
-        }
-        this.fetchAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        const signal = this.fetchAbortController ? this.fetchAbortController.signal : null;
-        const currentReq = ++this.fetchRequestId;
-
-        try {
-            if (!this.sb && typeof SponsorBlock !== 'undefined') {
-                this.initSponsorBlock(ytPlayer);
-            }
-            if (this.sb) {
-                this.sb.videoId = videoId;
-            }
-
-            const categories = this.sb ? this.sb.categories : ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro'];
-            const segments = (typeof SponsorBlock !== 'undefined' && SponsorBlock.load)
-                ? await SponsorBlock.load(videoId, categories, signal)
-                : [];
-
-            if (currentReq !== this.fetchRequestId || (signal && signal.aborted)) {
-                return this.currentSegments;
-            }
-
-            this.currentSegments = segments || [];
-            if (this.sb) {
-                this.sb.segments = this.currentSegments;
-                this.sb.ignored.clear();
-                this.sb.undone.clear();
-                this.sb.lastSkip = null;
-            }
-
-            if (this.currentSegments.length > 0) {
-                console.log(`[wBlock] Loaded ${this.currentSegments.length} SponsorBlock segments for ${videoId}`);
-                this.setStat(`${this.currentSegments.length} спонсор(ов)`);
-                this.renderMarkers();
-            } else {
-                this.setStat('Чисто');
-            }
-            return this.currentSegments;
-        } catch (e) {
-            if (e && e.name === 'AbortError') return [];
-            if (currentReq !== this.fetchRequestId) return this.currentSegments;
-            console.warn("[wBlock] SponsorBlock fetch error:", e);
-            this.setStat('Чисто');
-            return [];
-        }
-    },
-
-    renderMarkers() {
-        const container = document.getElementById('sponsor-segments-layer');
-        if (!container) return;
-        container.innerHTML = '';
-        const dur = getDuration();
-        if (!dur || dur <= 0) return;
-
-        this.currentSegments.forEach(seg => {
-            const leftPct = (seg.start / dur) * 100;
-            const widthPct = Math.max(0.5, ((seg.end - seg.start) / dur) * 100);
-            const marker = document.createElement('div');
-            marker.className = `sponsor-segment-marker ${seg.category}`;
-            marker.style.left = `${leftPct}%`;
-            marker.style.width = `${widthPct}%`;
-            marker.title = `wBlock: ${seg.category}`;
-            container.appendChild(marker);
-        });
-        this.markersRendered = true;
-    },
-
-    clearMarkers() {
-        const container = document.getElementById('sponsor-segments-layer');
-        if (container) container.innerHTML = '';
-        this.markersRendered = false;
-        this.skippedSegmentIds = new Set();
-        this.lastSkippedSegment = null;
-        if (this.sb) {
-            this.sb.clear();
-        }
-    },
-
-    checkAndSkip(currentTime, duration) {
-        if (!this.enabled || !this.sponsorBlockEnabled) return;
-        if (this.isAdAccelerated) return;
-        if (!this.currentSegments || !this.currentSegments.length) return;
-        if (this.isSkipping) return;
-
-        const t = (typeof currentTime === 'number' && !isNaN(currentTime)) ? currentTime : getCurrentTime();
-        if (typeof t !== 'number' || isNaN(t)) return;
-
-        for (const seg of this.currentSegments) {
-            if (this.skippedSegmentIds.has(seg.id)) continue;
-
-            if (t >= (seg.start - 0.2) && t < (seg.end - 0.3)) {
-                this.isSkipping = true;
-                this.skippedSegmentIds.add(seg.id);
-                this.lastSkippedSegment = seg;
-                if (this.sb) {
-                    this.sb.ignored.add(seg.id);
-                    this.sb.lastSkip = seg;
-                }
-
-                console.log(`[wBlock] Auto-skipping ${seg.category} (${seg.start.toFixed(1)}s -> ${seg.end.toFixed(1)}s)`);
-                seekTo(seg.end);
-                this.skippedCount++;
-                try { localStorage.setItem('sb_count', String(this.skippedCount)); } catch(e) {}
-                if (this.sb) this.sb.count = this.skippedCount;
-
-                this.updateUI();
-                this.showToast(seg.category);
-
-                setTimeout(() => {
-                    this.isSkipping = false;
-                }, 600);
-                break;
-            }
-        }
-    },
-
-    updateUI() {
-        const statEl = document.getElementById('wblock-stat');
-        if (statEl) {
-            if (currentCinemaEngine === 'clean') {
-                statEl.innerText = "0 рекламы (Clean)";
-            } else {
-                statEl.innerText = `${this.skippedCount} ad/skip`;
-            }
-        }
-    },
-
-    setStat(text) {
-        const statEl = document.getElementById('wblock-stat');
-        if (statEl) {
-            if (currentCinemaEngine === 'clean') {
-                statEl.innerText = "0 рекламы (Clean)";
-            } else {
-                statEl.innerText = text;
-            }
-        }
-    },
-
-    showCustomToast(text) {
-        const toast = document.getElementById('wblock-skip-toast');
-        const msg = document.getElementById('wblock-toast-msg');
-        const undoBtn = document.getElementById('btn-undo-skip');
-        if (!toast || !msg) return;
-
-        if (undoBtn) undoBtn.style.display = 'none';
-        msg.innerText = text;
-        toast.style.display = 'flex';
-
-        if (this.toastTimer) clearTimeout(this.toastTimer);
-        this.toastTimer = setTimeout(() => {
-            toast.style.display = 'none';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        }, 3000);
-    },
-
-    showToast(category) {
-        const toast = document.getElementById('wblock-skip-toast');
-        const msg = document.getElementById('wblock-toast-msg');
-        const undoBtn = document.getElementById('btn-undo-skip');
-        if (!toast || !msg) return;
-
-        let catName = 'реклама';
-        if (category === 'video-ad') {
-            catName = 'видеореклама (звук приглушен)';
-            if (undoBtn) undoBtn.style.display = 'none';
-        } else if (category === 'sponsor') {
-            catName = 'спонсорский блок';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        } else if (category === 'selfpromo') {
-            catName = 'самореклама автора';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        } else if (category === 'interaction') {
-            catName = 'напоминание о подписке';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        } else if (category === 'intro') {
-            catName = 'заставка/интро';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        } else if (category === 'outro') {
-            catName = 'титры/концовка';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        } else if (category === 'preview') {
-            catName = 'анонс/превью';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        } else if (category === 'music_offtopic') {
-            catName = 'немузыкальная вставка';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        } else if (category === 'filler') {
-            catName = 'отступление от темы';
-            if (undoBtn) undoBtn.style.display = 'inline-block';
-        }
-        msg.innerText = `🛡️ wBlock: Пропущен(а) ${catName}`;
-        toast.style.display = 'flex';
-
-        if (this.toastTimer) clearTimeout(this.toastTimer);
-        this.toastTimer = setTimeout(() => {
-            toast.style.display = 'none';
-        }, 3500);
-    },
-
-    undoLastSkip() {
-        if (this.lastSkippedSegment) {
-            const seg = this.lastSkippedSegment;
-            seekTo(Math.max(0, seg.start));
-            this.skippedSegmentIds.add(seg.id);
-            if (this.sb) {
-                this.sb.undone.add(seg.id);
-                this.sb.ignored.add(seg.id);
-                this.sb.lastSkip = null;
-            }
-            this.lastSkippedSegment = null;
-            if (this.skippedCount > 0) this.skippedCount--;
-            try { localStorage.setItem('sb_count', String(this.skippedCount)); } catch(e) {}
-            if (this.sb) this.sb.count = this.skippedCount;
-            this.updateUI();
-            const toast = document.getElementById('wblock-skip-toast');
-            if (toast) toast.style.display = 'none';
-            return;
-        }
-        if (this.sb && this.sb.lastSkip) {
-            this.sb.undo();
-            this.skippedCount = this.sb.count;
-            this.updateUI();
-            const toast = document.getElementById('wblock-skip-toast');
-            if (toast) toast.style.display = 'none';
-        }
-    }
-};
-
+// Uses the dedicated wBlock Web core engine (wblock.js)
+const wBlock = window.wBlock || {};
 const playbackFeatures = wBlock;
-window.wBlock = wBlock;
 window.playbackFeatures = playbackFeatures;
 
 function skipAdForce() {
-    if (!currentPlayingVideoId) return;
-    console.log("[Tesla Cinema] skipAdForce triggered by user");
-
-    // 1. Unmute
-    wBlock.restoreAfterAd();
-
-    // 2. Try seeking ad to its end
-    if (ytPlayer && typeof ytPlayer.getDuration === 'function') {
-        try {
-            const adDur = ytPlayer.getDuration();
-            if (adDur > 0 && adDur < 300) {
-                ytPlayer.seekTo(adDur + 1, true);
-            }
-        } catch(e) {}
+    if (wBlock && typeof wBlock.skipAdForce === 'function') {
+        wBlock.skipAdForce();
     }
-
-    // 3. PostMessage direct seek to end
-    const frame = document.getElementById('yt-player-frame');
-    if (frame && frame.contentWindow) {
-        try {
-            frame.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [999999, true] }), '*');
-        } catch(e) {}
-    }
-
-    wBlock.skippedCount++;
-    wBlock.updateUI();
-    wBlock.showCustomToast("⚡ Реклама пропущена!");
 }
 window.skipAdForce = skipAdForce;
 
