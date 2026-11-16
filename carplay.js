@@ -2633,30 +2633,17 @@ async function resolveAndPlayVideo(inputUrl) {
     if (ytMatch && ytMatch[1]) {
         await playYouTubeVideoById(ytMatch[1], "Видео по ссылке", "");
     } else {
-        // Direct MP4/WebM/HLS URL
-        console.log("Playing direct media URL:", inputUrl);
+        console.log("Playing direct media URL via OGV WebGL Canvas:", inputUrl);
         const wrapper = document.getElementById('stage-wrapper');
         if (wrapper) {
             wrapper.classList.add('active');
             wrapper.scrollIntoView({ behavior: 'smooth' });
         }
         const titleEl = document.getElementById('now-playing-title');
-        if (titleEl) titleEl.innerText = "Прямой видеопоток";
+        if (titleEl) titleEl.innerText = "Прямой видеопоток (D/R Canvas)";
 
-        const mount = document.getElementById('canvas-player-mount');
-        mount.innerHTML = `
-            <video id="direct-stream-video" controls autoplay playsinline style="width: 100%; height: 100%; object-fit: contain;">
-                <source src="${inputUrl}">
-                Ваш браузер не поддерживает прямое видео.
-            </video>
-        `;
-        const v = document.getElementById('direct-stream-video');
-        if (v) {
-            v.onended = () => { handleVideoEnded(); };
-            v.play().catch(e => console.warn(e));
-            isPlaying = true;
-            updatePlayIcons(true);
-        }
+        // Mount direct URL via OGV WebGL Canvas to prevent D/R freezing in Tesla!
+        mountOGVCanvasPlayer(inputUrl, null, 0);
     }
 }
 
@@ -2665,6 +2652,20 @@ async function resolveAndPlayVideo(inputUrl) {
 // =========================================
 function togglePlay() {
     userTriggerUnmute();
+
+    if (ogvPlayerInstance) {
+        if (ogvPlayerInstance.paused) {
+            ogvPlayerInstance.play().catch(e => console.warn(e));
+            if (audioEl && audioEl.src) audioEl.play().catch(e => console.warn(e));
+            isPlaying = true;
+        } else {
+            ogvPlayerInstance.pause();
+            if (audioEl && audioEl.src) audioEl.pause();
+            isPlaying = false;
+        }
+        updatePlayIcons(isPlaying);
+        return;
+    }
 
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) {
@@ -2730,6 +2731,16 @@ function seekRelative(delta) {
 }
 
 function seekTo(time) {
+    if (ogvPlayerInstance) {
+        ogvPlayerInstance.currentTime = time;
+        if (audioEl && audioEl.src) {
+            audioEl.currentTime = time;
+        }
+        ytCurrentTime = time;
+        updateScrubber();
+        return;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) {
         directVid.currentTime = time;
@@ -2748,6 +2759,10 @@ function seekTo(time) {
 }
 
 function getCurrentTime() {
+    if (ogvPlayerInstance) {
+        return ogvPlayerInstance.currentTime || 0;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) return directVid.currentTime || 0;
 
@@ -2761,6 +2776,10 @@ function getCurrentTime() {
 }
 
 function getDuration() {
+    if (ogvPlayerInstance && ogvPlayerInstance.duration && !isNaN(ogvPlayerInstance.duration) && ogvPlayerInstance.duration > 0) {
+        return ogvPlayerInstance.duration;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) return directVid.duration || 0;
 
@@ -2775,6 +2794,12 @@ function getDuration() {
 
 function setPlaybackRate(rate) {
     currentSpeed = rate;
+    if (ogvPlayerInstance) {
+        ogvPlayerInstance.playbackRate = rate;
+        if (audioEl && audioEl.src) audioEl.playbackRate = rate;
+        return;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) {
         directVid.playbackRate = rate;

@@ -2250,7 +2250,7 @@ function handlePlayerError(videoId, code) {
 }
 
 function bindYTPlayer() {
-    if (currentCinemaEngine !== 'youtube') return;
+    if (currentCinemaEngine !== 'direct') return;
     const frame = document.getElementById('yt-player-frame');
     if (!frame) return;
 
@@ -2306,12 +2306,7 @@ function bindYTPlayer() {
                     },
                     onError: (event) => {
                         console.warn("[Tesla Cinema] YouTube Player Error:", event.data);
-                        if (event.data === 101 || event.data === 150) {
-                            wBlock.showCustomToast("⚠️ Ограничение YouTube. Переключаем на Чистый плеер...");
-                            setCinemaEngine('clean');
-                        } else {
-                            handlePlayerError(currentPlayingVideoId, event.data);
-                        }
+                        handlePlayerError(currentPlayingVideoId, event.data);
                     }
                 }
             });
@@ -2321,71 +2316,287 @@ function bindYTPlayer() {
     }
 }
 
-function mountVideoPlayer(videoId, startTime = 0) {
+async function resolveStreamsWithServer(videoId) {
+    const backendUrl = localStorage.getItem('cinema_backend_url');
+    if (!backendUrl) {
+        throw new Error('BACKEND_URL_MISSING');
+    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const resp = await fetch(`${backendUrl}/api/stream?id=${encodeURIComponent(videoId)}`, {
+        signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!resp.ok) {
+        throw new Error(`Server HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    if (!data.videoUrl) {
+        throw new Error('No videoUrl in server response');
+    }
+    return {
+        videoUrl: data.videoUrl,
+        audioUrl: data.audioUrl || null,
+        duration: data.duration || 0
+    };
+}
+
+async function resolveStreamsWithCobalt(videoId) {
+    const cobaltInstances = [
+        'https://api.cobalt.tools/',
+        'https://cobalt-api.kwiatekm.tokyo/',
+        'https://api.streamrip.net/'
+    ];
+
+    let lastErr = null;
+    for (const api of cobaltInstances) {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 7000);
+            const resp = await fetch(api, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    url: `https://www.youtube.com/watch?v=${videoId}`,
+                    videoQuality: '720'
+                }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            if (data && (data.url || data.stream)) {
+                return {
+                    videoUrl: data.url || data.stream,
+                    audioUrl: null,
+                    duration: 0
+                };
+            }
+        } catch(e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr || new Error('Cobalt instances unreachable');
+}
+
+function mountOGVCanvasPlayer(videoUrl, audioUrl, startTime = 0) {
+    cleanupCurrentPlayer();
+    const mount = document.getElementById('canvas-player-mount');
+    if (!mount) return;
+
+    if (window.OGVLoader) {
+        window.OGVLoader.base = "https://cdn.jsdelivr.net/npm/ogv@1.8.9/dist";
+    }
+
+    try {
+        if (typeof OGVPlayer === 'undefined') {
+            console.warn("[Tesla Cinema] OGVPlayer not found, using HTML5 video fallback");
+            mount.innerHTML = `
+                <video id="direct-stream-video" controls autoplay playsinline style="width: 100%; height: 100%; object-fit: contain;">
+                    <source src="${videoUrl}">
+                </video>
+            `;
+            const v = document.getElementById('direct-stream-video');
+            if (v) {
+                if (startTime > 0) v.currentTime = startTime;
+                v.play().catch(e => console.warn(e));
+            }
+            isPlaying = true;
+            updatePlayIcons(true);
+            return;
+        }
+
+        const player = new OGVPlayer({
+            webGL: true,
+            audio: !audioUrl
+        });
+        ogvPlayerInstance = player;
+        player.id = "teslatelek-ogv-canvas";
+        player.style.width = "100%";
+        player.style.height = "100%";
+        player.style.objectFit = "contain";
+        player.style.position = "absolute";
+        player.style.top = "0";
+        player.style.left = "0";
+        player.style.background = "#000000";
+
+        player.muted = !!audioUrl;
+        player.crossOrigin = "anonymous";
+        player.src = videoUrl;
+
+        mount.appendChild(player);
+
+        if (audioUrl && audioEl) {
+            audioEl.src = audioUrl;
+            audioEl.currentTime = startTime;
+            audioEl.playbackRate = currentSpeed;
+        }
+
+        player.onloadedmetadata = () => {
+            if (startTime > 0) {
+                player.currentTime = startTime;
+            }
+            if (player.duration && player.duration > 0) {
+                ytDuration = player.duration;
+            }
+        };
+
+        player.onplay = () => {
+            isPlaying = true;
+            updatePlayIcons(true);
+            if (audioUrl && audioEl && audioEl.paused) {
+                audioEl.play().catch(e => console.warn("[Tesla Cinema] Audio play error:", e));
+            }
+        };
+
+        player.onpause = () => {
+            isPlaying = false;
+            updatePlayIcons(false);
+            if (audioUrl && audioEl && !audioEl.paused) {
+                audioEl.pause();
+            }
+        };
+
+        player.ontimeupdate = () => {
+            if (player.currentTime) {
+                ytCurrentTime = player.currentTime;
+                updateScrubber();
+            }
+        };
+
+        player.onended = () => {
+            handleVideoEnded();
+        };
+
+        player.onerror = (err) => {
+            console.error("[Tesla Cinema] OGV Player error:", err);
+            wBlock.showCustomToast("⚠️ Ошибка Canvas-рендера. Переключаем на YouTube HD...");
+            mountIframePlayer(currentPlayingVideoId, startTime);
+        };
+
+        player.play().catch(err => {
+            console.warn("[Tesla Cinema] OGV autoplay blocked:", err);
+            showUnmuteBanner(true);
+        });
+
+    } catch (e) {
+        console.error("[Tesla Cinema] Failed to mount OGV Player:", e);
+        mountIframePlayer(currentPlayingVideoId, startTime);
+    }
+
+    isPlaying = true;
+    updatePlayIcons(true);
+    updateEngineUI();
+}
+window.mountOGVCanvasPlayer = mountOGVCanvasPlayer;
+
+function mountIframePlayer(videoId, effectiveStart = 0) {
+    cleanupCurrentPlayer();
+    const mount = document.getElementById('canvas-player-mount');
+    if (!mount) return;
+
+    const startParam = effectiveStart > 0 ? `&start=${effectiveStart}` : '';
+    const originParam = (window.location.origin && window.location.origin !== 'null' && window.location.protocol.startsWith('http'))
+        ? `&origin=${encodeURIComponent(window.location.origin)}`
+        : '';
+
+    mount.innerHTML = `
+        <iframe id="yt-player-frame"
+            src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&enablejsapi=1${originParam}&playsinline=1&rel=0${startParam}&iv_load_policy=3"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background: #000;">
+        </iframe>
+    `;
+
+    const frame = document.getElementById('yt-player-frame');
+    if (frame) {
+        frame.onload = () => {
+            bindYTPlayer();
+            try {
+                frame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+            } catch(e) {}
+        };
+    }
+    bindYTPlayer();
+    isPlaying = true;
+    updatePlayIcons(true);
+    updateEngineUI();
+}
+window.mountIframePlayer = mountIframePlayer;
+
+async function mountVideoPlayer(videoId, startTime = 0) {
     const mount = document.getElementById('canvas-player-mount');
     const overlay = document.getElementById('player-overlay');
     if (overlay) overlay.classList.add('hidden');
     showUnmuteBanner(false);
     if (!mount) return;
 
-    if (audioEl) {
-        audioEl.pause();
-        audioEl.src = '';
-    }
-
+    cleanupCurrentPlayer();
     const effectiveStart = Math.max(0, Math.floor(startTime || 0));
-    ytPlayer = null;
 
     console.log(`[Tesla Cinema] Mounting Player for ${videoId} using engine: ${currentCinemaEngine} at ${effectiveStart}s`);
 
-    if (currentCinemaEngine === 'clean') {
-        const startParam = effectiveStart > 0 ? `&t=${effectiveStart}` : '';
+    if (currentCinemaEngine === 'server') {
+        const backendUrl = localStorage.getItem('cinema_backend_url');
+        if (!backendUrl) {
+            openBackendConfigModal();
+            wBlock.showCustomToast("⚠️ Укажите адрес своего сервера в настройках");
+            mountIframePlayer(videoId, effectiveStart);
+            return;
+        }
+
         mount.innerHTML = `
-            <iframe id="yt-player-frame"
-                src="https://piped.video/embed/${videoId}?autoplay=1${startParam}"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen
-                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background: #000;">
-            </iframe>
+            <div id="player-stream-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;background:#000;color:#fff;">
+                <div class="tesla-spinner" style="width:40px;height:40px;border:3px solid rgba(48,209,88,0.2);border-top:3px solid #30d158;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+                <div style="margin-top:14px;font-size:14px;color:#a0a0a0;font-weight:600;">🚀 Подключение к своему серверу (D/R WebGL)...</div>
+            </div>
         `;
-        const frame = document.getElementById('yt-player-frame');
-        if (frame) {
-            frame.onerror = () => {
-                console.warn("[Tesla Cinema] Clean engine fallback to secondary host...");
-                frame.src = `https://piped.mha.fi/embed/${videoId}?autoplay=1${startParam}`;
-            };
+
+        try {
+            const stream = await resolveStreamsWithServer(videoId);
+            if (currentPlayingVideoId !== videoId) return;
+            mountOGVCanvasPlayer(stream.videoUrl, stream.audioUrl, effectiveStart);
+            return;
+        } catch (e) {
+            console.error("[Tesla Cinema] Server stream failed:", e);
+            wBlock.showCustomToast("⚠️ Свой сервер недоступен, пробуем Cobalt...");
+            try {
+                const cStream = await resolveStreamsWithCobalt(videoId);
+                if (currentPlayingVideoId !== videoId) return;
+                mountOGVCanvasPlayer(cStream.videoUrl, null, effectiveStart);
+                return;
+            } catch(e2) {
+                mountIframePlayer(videoId, effectiveStart);
+                return;
+            }
+        }
+    } else if (currentCinemaEngine === 'cobalt') {
+        mount.innerHTML = `
+            <div id="player-stream-loading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;background:#000;color:#fff;">
+                <div class="tesla-spinner" style="width:40px;height:40px;border:3px solid rgba(48,209,88,0.2);border-top:3px solid #30d158;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+                <div style="margin-top:14px;font-size:14px;color:#a0a0a0;font-weight:600;">⚡️ Cobalt API: Получение потока без рекламы (Canvas)...</div>
+            </div>
+        `;
+
+        try {
+            const stream = await resolveStreamsWithCobalt(videoId);
+            if (currentPlayingVideoId !== videoId) return;
+            mountOGVCanvasPlayer(stream.videoUrl, null, effectiveStart);
+            return;
+        } catch (e) {
+            console.error("[Tesla Cinema] Cobalt stream failed:", e);
+            wBlock.showCustomToast("⚠️ Cobalt API временно недоступен, включен Iframe HD");
+            mountIframePlayer(videoId, effectiveStart);
+            return;
         }
     } else {
-        // Official YouTube Embed
-        const startParam = effectiveStart > 0 ? `&start=${effectiveStart}` : '';
-        const originParam = (window.location.origin && window.location.origin !== 'null' && window.location.protocol.startsWith('http'))
-            ? `&origin=${encodeURIComponent(window.location.origin)}`
-            : '';
-
-        mount.innerHTML = `
-            <iframe id="yt-player-frame"
-                src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&enablejsapi=1${originParam}&playsinline=1&rel=0${startParam}&iv_load_policy=3"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowfullscreen
-                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; background: #000;">
-            </iframe>
-        `;
-
-        const frame = document.getElementById('yt-player-frame');
-        if (frame) {
-            frame.onload = () => {
-                bindYTPlayer();
-                try {
-                    frame.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
-                } catch(e) {}
-            };
-        }
-        bindYTPlayer();
+        // Direct / Official YouTube Embed
+        mountIframePlayer(videoId, effectiveStart);
     }
-
-    isPlaying = true;
-    updatePlayIcons(true);
-    updateEngineUI();
 }
 
 async function playYouTubeVideoById(videoId, title, author, durationSec = 0) {
@@ -2422,30 +2633,17 @@ async function resolveAndPlayVideo(inputUrl) {
     if (ytMatch && ytMatch[1]) {
         await playYouTubeVideoById(ytMatch[1], "Видео по ссылке", "");
     } else {
-        // Direct MP4/WebM/HLS URL
-        console.log("Playing direct media URL:", inputUrl);
+        console.log("Playing direct media URL via OGV WebGL Canvas:", inputUrl);
         const wrapper = document.getElementById('stage-wrapper');
         if (wrapper) {
             wrapper.classList.add('active');
             wrapper.scrollIntoView({ behavior: 'smooth' });
         }
         const titleEl = document.getElementById('now-playing-title');
-        if (titleEl) titleEl.innerText = "Прямой видеопоток";
+        if (titleEl) titleEl.innerText = "Прямой видеопоток (D/R Canvas)";
 
-        const mount = document.getElementById('canvas-player-mount');
-        mount.innerHTML = `
-            <video id="direct-stream-video" controls autoplay playsinline style="width: 100%; height: 100%; object-fit: contain;">
-                <source src="${inputUrl}">
-                Ваш браузер не поддерживает прямое видео.
-            </video>
-        `;
-        const v = document.getElementById('direct-stream-video');
-        if (v) {
-            v.onended = () => { handleVideoEnded(); };
-            v.play().catch(e => console.warn(e));
-            isPlaying = true;
-            updatePlayIcons(true);
-        }
+        // Mount direct URL via OGV WebGL Canvas to prevent D/R freezing in Tesla!
+        mountOGVCanvasPlayer(inputUrl, null, 0);
     }
 }
 
@@ -2454,6 +2652,20 @@ async function resolveAndPlayVideo(inputUrl) {
 // =========================================
 function togglePlay() {
     userTriggerUnmute();
+
+    if (ogvPlayerInstance) {
+        if (ogvPlayerInstance.paused) {
+            ogvPlayerInstance.play().catch(e => console.warn(e));
+            if (audioEl && audioEl.src) audioEl.play().catch(e => console.warn(e));
+            isPlaying = true;
+        } else {
+            ogvPlayerInstance.pause();
+            if (audioEl && audioEl.src) audioEl.pause();
+            isPlaying = false;
+        }
+        updatePlayIcons(isPlaying);
+        return;
+    }
 
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) {
@@ -2519,6 +2731,16 @@ function seekRelative(delta) {
 }
 
 function seekTo(time) {
+    if (ogvPlayerInstance) {
+        ogvPlayerInstance.currentTime = time;
+        if (audioEl && audioEl.src) {
+            audioEl.currentTime = time;
+        }
+        ytCurrentTime = time;
+        updateScrubber();
+        return;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) {
         directVid.currentTime = time;
@@ -2537,6 +2759,10 @@ function seekTo(time) {
 }
 
 function getCurrentTime() {
+    if (ogvPlayerInstance) {
+        return ogvPlayerInstance.currentTime || 0;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) return directVid.currentTime || 0;
 
@@ -2550,6 +2776,10 @@ function getCurrentTime() {
 }
 
 function getDuration() {
+    if (ogvPlayerInstance && ogvPlayerInstance.duration && !isNaN(ogvPlayerInstance.duration) && ogvPlayerInstance.duration > 0) {
+        return ogvPlayerInstance.duration;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) return directVid.duration || 0;
 
@@ -2564,6 +2794,12 @@ function getDuration() {
 
 function setPlaybackRate(rate) {
     currentSpeed = rate;
+    if (ogvPlayerInstance) {
+        ogvPlayerInstance.playbackRate = rate;
+        if (audioEl && audioEl.src) audioEl.playbackRate = rate;
+        return;
+    }
+
     const directVid = document.getElementById('direct-stream-video');
     if (directVid) {
         directVid.playbackRate = rate;
