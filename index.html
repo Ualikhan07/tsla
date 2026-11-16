@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Tesla Cinema • Видео и YouTube в движении (Drive & Reverse)</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="carplay.css?v=6.3">
+    <!-- YouTube IFrame API for real-time SponsorBlock & ad tracking -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <!-- SponsorBlock for skipping sponsored segments -->
+    <script src="sponsorblock.js"></script>
+</head>
+<body class="carplay-theme dedicated-cinema-mode">
+    <div id="cinema-app-root" class="cinema-app-container">
+        
+        <!-- TOP NAVIGATION BAR -->
+        <header class="cinema-header">
+            <div class="cinema-brand">
+                <div class="brand-icon">
+                    <svg viewBox="0 0 24 24"><path fill="currentColor" d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22 2.65-.28 1.3-.07 2.49-.1 3.59-.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z"/></svg>
+                </div>
+                <div class="brand-text">
+                    <div class="brand-title">Tesla Cinema</div>
+                    <div class="brand-subtitle">Drive & Reverse • wBlock Ad-Shield</div>
+                </div>
+            </div>
+
+            <!-- SEARCH BAR -->
+            <div class="cinema-search-box">
+                <input type="text" id="yt-search-input" class="cinema-search-input" placeholder="Поиск в YouTube или ссылка на видео (https://youtu.be/...)...">
+                <button id="yt-search-btn" class="cinema-search-btn">
+                    <svg viewBox="0 0 24 24"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+                </button>
+            </div>
+
+            <!-- HEADER ACTIONS: wBLOCK STATUS & LOGIN -->
+            <div class="cinema-header-actions">
+                <div class="wblock-badge" id="wblock-badge" title="Статус защиты wBlock (нажмите для смены режима: Без рекламы / YouTube HD)" onclick="toggleCinemaEngine()">
+                    <span class="wblock-icon">🛡️</span>
+                    <span class="wblock-title">wBlock</span>
+                    <span class="wblock-chip" id="wblock-stat">0 рекламы (Clean)</span>
+                </div>
+
+                <button class="yt-auth-btn" id="btn-yt-login">
+                    <svg viewBox="0 0 24 24" class="yt-user-icon"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+                    <span id="yt-user-label">Войти</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- YOUTUBE MAIN NAVIGATION: ГЛАВНАЯ / ПОДПИСКИ / ИСТОРИЯ -->
+        <nav class="cinema-nav-pills">
+            <button class="yt-pill-btn active" data-query="home" id="tab-home">
+                <svg viewBox="0 0 24 24" class="yt-tab-svg"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+                <span>Главная</span>
+            </button>
+            <button class="yt-pill-btn" data-query="subscriptions" id="tab-subscriptions">
+                <svg viewBox="0 0 24 24" class="yt-tab-svg"><path d="M20 8H4V6h16v2zm-2-6H6v2h12V2zm4 10v8c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2v-8c0-1.1.9-2 2-2h16c1.1 0 2 .9 2 2zm-6 4l-6-3.27v6.53L16 16z"/></svg>
+                <span>Подписки</span>
+            </button>
+            <button class="yt-pill-btn" data-query="history" id="tab-history">
+                <svg viewBox="0 0 24 24" class="yt-tab-svg"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+                <span>История</span>
+            </button>
+        </nav>
+
+        <!-- DIRECT URL DRAWER -->
+        <div id="direct-url-box" class="direct-url-box" style="display: none;">
+            <input type="text" id="video-url-input" class="cinema-search-input" placeholder="Вставьте прямую ссылку на видео (YouTube, MP4, WebM или HLS m3u8)...">
+            <button class="btn-primary" id="btn-play-custom">Воспроизвести</button>
+        </div>
+
+        <!-- MAIN EMBEDDED PLAYER STAGE -->
+        <div class="cinema-stage-wrapper" id="stage-wrapper">
+            <div class="stage-close-bar">
+                <div class="now-playing-title" id="now-playing-title">Воспроизведение...</div>
+                <div class="player-engine-selector" id="player-engine-selector">
+                    <button class="engine-pill-btn active" id="engine-btn-clean" onclick="setCinemaEngine('clean')" title="Режим «Без рекламы»: просмотр видео без рекламных вставок">
+                        🛡️ Clean (Без рекламы)
+                    </button>
+                    <button class="engine-pill-btn" id="engine-btn-youtube" onclick="setCinemaEngine('youtube')" title="Официальный плеер YouTube с поддержкой SponsorBlock">
+                        📺 YouTube HD
+                    </button>
+                </div>
+                <div class="stage-status-badge" id="stage-status-badge" style="background: rgba(48, 209, 88, 0.15); border-color: rgba(48, 209, 88, 0.4); color: #4ade80;">
+                    <span class="badge-dot"></span>
+                    <span id="engine-status-text">🛡️ wBlock: Без рекламы (Clean)</span>
+                </div>
+                <button class="btn-close-stage" id="btn-close-stage" title="Свернуть">✕</button>
+            </div>
+
+            <div class="cinema-stage" id="cinema-stage">
+                <div class="cinema-overlay hidden" id="player-overlay">
+                    <button class="big-center-play" id="btn-stage-play">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+                    </button>
+                </div>
+
+                <!-- Canvas/IFrame Mount -->
+                <div id="canvas-player-mount"></div>
+
+                <!-- Floating Next Video Countdown Overlay -->
+                <div class="next-video-overlay" id="next-video-overlay" style="display: none;">
+                    <div class="next-video-card">
+                        <div class="next-video-header">
+                            <span class="next-badge">⏭️ СЛЕДУЮЩЕЕ ВИДЕО</span>
+                            <span class="next-countdown-badge" id="next-countdown-badge">через 4 сек</span>
+                        </div>
+                        <div class="next-video-title" id="next-video-title">Загрузка названия...</div>
+                        <div class="next-video-author" id="next-video-author">Автор</div>
+                        <div class="next-video-actions">
+                            <button class="btn-primary next-play-now-btn" onclick="playNextVideo()">▶️ Включить сейчас</button>
+                            <button class="btn-secondary next-cancel-btn" onclick="cancelNextVideoTimer()">Отмена ✕</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Floating Unmute Prompt -->
+                <div class="unmute-banner" id="unmute-banner" style="display: none;" onclick="userTriggerUnmute()">
+                    <div class="unmute-banner-content">
+                        <svg viewBox="0 0 24 24" class="unmute-icon"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                        <span>🔊 Включить звук</span>
+                    </div>
+                </div>
+
+                <!-- Floating Ad-Shield / Skip Ad Banner -->
+                <div class="ad-shield" id="ad-shield" style="display: none;">
+                    <div class="ad-shield-content">
+                        <span class="ad-shield-badge">🛡️ Реклама на YouTube (звук приглушен)</span>
+                        <button class="ad-switch-clean-btn" onclick="setCinemaEngine('clean')" title="Переключить на плеер без рекламы">
+                            🛡️ Без рекламы
+                        </button>
+                        <button class="ad-skip-force-btn" id="btn-floating-skip-ad" onclick="skipAdForce()">
+                            ⏭️ Пропустить
+                        </button>
+                    </div>
+                </div>
+
+                <!-- wBlock Sponsor Skip Toast Notification -->
+                <div class="wblock-skip-toast" id="wblock-skip-toast" style="display: none;">
+                    <span class="toast-icon">🛡️</span>
+                    <span class="toast-msg" id="wblock-toast-msg">wBlock: Пропущен спонсор</span>
+                    <button class="btn-undo-skip" id="btn-undo-skip">Отменить ↺</button>
+                </div>
+
+                <!-- Audio element for hardware background audio playback -->
+                <audio id="in-car-audio" preload="auto"></audio>
+
+                <!-- In-player controls bar -->
+                <div class="player-controls-bar" id="controls-bar">
+                    <button class="ctrl-btn" id="ctrl-play-pause" title="Воспроизведение / Пауза">
+                        <svg viewBox="0 0 24 24" id="ctrl-play-icon"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    </button>
+                    <button class="ctrl-btn" id="ctrl-rewind" title="Назад 15 сек">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+                        <span>-15s</span>
+                    </button>
+                    <button class="ctrl-btn" id="ctrl-forward" title="Вперед 15 сек">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
+                        <span>+15s</span>
+                    </button>
+                    <button class="ctrl-btn ctrl-next" id="ctrl-next" title="Следующее видео (⏭️)">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                    </button>
+
+                    <button class="ctrl-btn ctrl-skip-ad" id="ctrl-skip-ad" title="Пропустить рекламу / заставку" onclick="skipAdForce()">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                        <span>Пропустить</span>
+                    </button>
+
+                    <div class="time-display" id="player-time">00:00 / 00:00</div>
+                    <div class="scrubber-track" id="scrubber-track">
+                        <div class="scrubber-sponsor-segments" id="sponsor-segments-layer"></div>
+                        <div class="scrubber-buffered" id="scrubber-buffered"></div>
+                        <div class="scrubber-fill" id="scrubber-fill"></div>
+                        <div class="scrubber-thumb" id="scrubber-thumb"></div>
+                    </div>
+
+                    <div class="speed-selector">
+                        <button class="speed-pill active" data-speed="1.0">1x</button>
+                        <button class="speed-pill" data-speed="1.25">1.25x</button>
+                        <button class="speed-pill" data-speed="1.5">1.5x</button>
+                        <button class="speed-pill" data-speed="2.0">2x</button>
+                    </div>
+
+                    <!-- Autoplay Next Toggle Switch -->
+                    <button class="ctrl-btn ctrl-autoplay active" id="btn-autoplay-toggle" title="Автовоспроизведение следующего видео: ВКЛ">
+                        <svg viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path fill="currentColor" d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+                        <span>Авто</span>
+                    </button>
+
+                    <button class="ctrl-btn" id="btn-cinema-full" title="На весь экран">
+                        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIDEO CARDS GRID -->
+        <main class="cinema-content">
+            <div class="yt-video-grid" id="yt-video-grid">
+                <!-- Dynamically rendered YouTube cards -->
+            </div>
+        </main>
+    </div> <!-- end cinema-app-root -->
+
+    <!-- SMARTPHONE PAIRING, GOOGLE & DIRECT AUTH MODAL -->
+    <div class="yt-modal" id="yt-login-modal" style="display: none;">
+        <div class="yt-modal-content">
+            <div class="yt-modal-header">
+                <h2 id="yt-modal-title">🔐 Вход и управление профилем</h2>
+                <button class="btn-close-modal" id="btn-close-modal" aria-label="Закрыть">✕</button>
+            </div>
+            
+            <!-- VIEW 1: AUTHENTICATION / LOGIN OPTIONS (when not logged in) -->
+            <div class="yt-modal-body" id="yt-modal-view-login">
+                <!-- Navigation Tabs inside modal -->
+                <div class="yt-auth-tabs">
+                    <button class="yt-auth-tab-btn active" id="tab-btn-pair" data-auth-tab="pair">📱 Пульт со смартфона</button>
+                    <button class="yt-auth-tab-btn" id="tab-btn-direct" data-auth-tab="direct">✍️ Локальный профиль</button>
+                    <button class="yt-auth-tab-btn" id="tab-btn-google" data-auth-tab="google">🌐 Вход через Google QR</button>
+                </div>
+
+                <!-- TAB 1: SMARTPHONE PAIR (Default & Recommended for Tesla) -->
+                <div class="yt-auth-tab-pane" id="auth-pane-pair">
+                    <p style="color: #ccc; font-size: 13px; margin-bottom: 12px; line-height: 1.4;">
+                        Наведите камеру смартфона на QR-код для подключения пульта и управления видео с телефона:
+                    </p>
+                    <div class="device-login-container">
+                        <div class="qr-box">
+                            <img id="tesla-pair-qr-img" src="" alt="Tesla Connect QR" width="160" height="160">
+                        </div>
+                        <div class="code-box">
+                            <div style="font-size: 11px; color: #888;">КОД ЭКРАНА TESLA:</div>
+                            <div class="device-code-display" id="tesla-screen-code-display">TSLA-XXXX</div>
+                            <div id="tesla-pair-status" style="font-size: 12px; color: #4ade80; margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                                <span class="pulse-dot"></span> Ожидание подключения смартфона...
+                            </div>
+                            <div style="font-size: 11px; color: #aaa; margin-top: 6px; line-height: 1.3;">
+                                Ссылка пульта:<br>
+                                <span id="tesla-pair-url-text" style="color: #4ade80; word-break: break-all; font-weight: 600;">.../connect.html</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: DIRECT INPUT (Screen keyboard) -->
+                <div class="yt-auth-tab-pane" id="auth-pane-direct" style="display: none;">
+                    <p style="color: #ccc; font-size: 13px; margin-bottom: 12px; line-height: 1.4;">
+                        Введите имя для локального профиля Tesla Cinema:
+                    </p>
+                    <div class="direct-login-box">
+                        <input type="text" id="yt-direct-name-input" class="text-input" placeholder="Например: Уалихан или @MrBeast" autocomplete="off">
+                        <button id="btn-direct-login" class="btn-primary" style="margin-top: 10px; width: 100%; padding: 12px; font-weight: 700;">
+                            ✓ Сохранить имя
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TAB 3: GOOGLE DEVICE FLOW -->
+                <div class="yt-auth-tab-pane" id="auth-pane-google" style="display: none;">
+                    <p style="color: #ccc; font-size: 13px; margin-bottom: 12px; line-height: 1.4;">
+                        Отсканируйте камерой смартфона и подтвердите вход на <span style="color: #4ade80; text-decoration: underline;">google.com/device</span>:
+                    </p>
+                    <div class="device-login-container">
+                        <div class="qr-box">
+                            <img id="google-qr-img" src="" alt="Google QR" width="140" height="140">
+                        </div>
+                        <div class="code-box">
+                            <div style="font-size: 11px; color: #888;">КОД ПОДТВЕРЖДЕНИЯ GOOGLE:</div>
+                            <div class="device-code-display" id="google-device-code">Загрузка...</div>
+                            <div id="google-auth-status" style="font-size: 11px; color: #4ade80; margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                                <span class="pulse-dot"></span> Ожидание подтверждения...
+                            </div>
+                        </div>
+                    </div>
+                    <div style="font-size: 11px; color: #eab308; margin-top: 10px; line-height: 1.4; background: rgba(234, 179, 8, 0.1); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(234, 179, 8, 0.2);">
+                        ⚠️ Вход подтверждается на смартфоне. Браузер Tesla не поддерживает прямую авторизацию Google.
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW 2: ACCOUNT MANAGEMENT (when logged in) -->
+            <div class="yt-modal-body" id="yt-modal-view-account" style="display: none;">
+                <div class="account-card-box">
+                    <div class="account-card-header">
+                        <div class="account-avatar-circle" id="modal-account-avatar">👤</div>
+                        <div class="account-info-text">
+                            <div class="account-user-name" id="modal-account-name">Пользователь</div>
+                            <div class="account-user-status">🟢 Профиль активен на экране Tesla</div>
+                        </div>
+                    </div>
+                    <div class="account-actions-list">
+                        <button class="btn-primary" id="btn-modal-open-remote" style="width: 100%; padding: 12px; margin-bottom: 10px;">
+                            📱 Открыть пульт со смартфона
+                        </button>
+                        <button class="btn-danger-outline" id="btn-modal-logout" style="width: 100%; padding: 12px;">
+                            🚪 Выйти из аккаунта
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden audio element for fallback audio -->
+    <script src="youtube-account.js?v=1"></script>
+    <script src="carplay.js?v=6.3"></script>
+</body>
+</html>

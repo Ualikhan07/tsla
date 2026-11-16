@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Tesla Cinema • Подключение со смартфона</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <style>
+        :root {
+            --bg-color: #0b0d13;
+            --surface: #171b24;
+            --surface-hover: #212634;
+            --accent-red: #e82127;
+            --accent-green: #30d158;
+            --text-primary: #ffffff;
+            --text-secondary: #8e95a5;
+            --border: rgba(255, 255, 255, 0.12);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: radial-gradient(circle at 50% 0%, #1a2233 0%, #0b0d13 70%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 16px;
+        }
+        .container {
+            width: 100%;
+            max-width: 440px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .header {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(48, 209, 88, 0.15);
+            border: 1px solid rgba(48, 209, 88, 0.4);
+            color: #4ade80;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .title {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+        .subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .code-pill {
+            font-family: monospace;
+            font-size: 20px;
+            font-weight: 800;
+            color: #4ade80;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            border-radius: 10px;
+            padding: 8px;
+            text-align: center;
+            letter-spacing: 2px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .input-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .text-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            color: #fff;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .text-input:focus {
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #e82127 0%, #b81419 100%);
+            border: none;
+            color: #fff;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 4px 15px rgba(232, 33, 39, 0.4);
+            transition: transform 0.1s, opacity 0.2s;
+        }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-success {
+            background: linear-gradient(135deg, #30d158 0%, #20993e 100%);
+            box-shadow: 0 4px 15px rgba(48, 209, 88, 0.4);
+        }
+        .remote-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 4px;
+        }
+        .remote-btn {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .remote-btn:active { background: rgba(255, 255, 255, 0.2); }
+        .status-msg {
+            text-align: center;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 10px;
+            border-radius: 10px;
+            display: none;
+        }
+        .status-msg.success {
+            display: block;
+            background: rgba(48, 209, 88, 0.15);
+            color: #4ade80;
+            border: 1px solid rgba(48, 209, 88, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="badge">⚡️ Связь с экраном Tesla</div>
+            <h1 class="title">Tesla Cinema Connect</h1>
+            <p class="subtitle">Управление видео и авторизация без ввода паролей на экране авто</p>
+        </div>
+
+        <div class="card">
+            <div class="card-title">🚘 Подключение к машине</div>
+            <div class="input-group">
+                <div class="input-label">КОД ЭКРАНА TESLA:</div>
+                <input type="text" id="tesla-code-input" class="code-pill text-input" placeholder="TSLA-XXXX" maxlength="10">
+            </div>
+            <div class="input-group">
+                <div class="input-label">ВАШЕ ИМЯ ИЛИ @КАНАЛ:</div>
+                <input type="text" id="user-name-input" class="text-input" placeholder="Например: Мой iPhone или @youtube" value="">
+            </div>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="quick-chip-btn" onclick="document.getElementById('user-name-input').value='Мой iPhone'" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;">Мой iPhone</button>
+                <button type="button" class="quick-chip-btn" onclick="document.getElementById('user-name-input').value='@mkbhd'" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;">@mkbhd</button>
+                <button type="button" class="quick-chip-btn" onclick="document.getElementById('user-name-input').value='@tesla'" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;">@tesla</button>
+            </div>
+            <button class="btn-primary btn-success" id="btn-pair">
+                <span>🔗 Подключить к Tesla</span>
+            </button>
+            <div id="pair-status" class="status-msg"></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">📱 Пульт: Отправить видео в Tesla</div>
+            <p class="subtitle">Вставьте ссылку на любое видео YouTube или поиск, чтобы оно сразу открылось на большом экране авто</p>
+            <div class="input-group">
+                <input type="text" id="video-url-input" class="text-input" placeholder="https://youtu.be/... или название видео">
+            </div>
+            <button class="btn-primary" id="btn-send-video">
+                <span>▶ Включить на экране авто</span>
+            </button>
+            <div id="video-status" class="status-msg"></div>
+
+            <div class="card-title" style="margin-top: 10px; font-size: 13px;">Управление воспроизведением:</div>
+            <div class="remote-controls">
+                <button class="remote-btn" onclick="sendCommand('rewind')">
+                    <span>⏪ -15s</span>
+                </button>
+                <button class="remote-btn" onclick="sendCommand('togglePlay')">
+                    <span>⏯ Play/Pause</span>
+                </button>
+                <button class="remote-btn" onclick="sendCommand('forward')">
+                    <span>+15s ⏩</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Extract code from URL query: ?code=TSLA-XXXX
+        const urlParams = new URLSearchParams(window.location.search);
+        let pairCode = urlParams.get('code') || localStorage.getItem('last_tesla_code') || '';
+        
+        const codeInput = document.getElementById('tesla-code-input');
+        const nameInput = document.getElementById('user-name-input');
+        const pairBtn = document.getElementById('btn-pair');
+        const pairStatus = document.getElementById('pair-status');
+
+        const videoInput = document.getElementById('video-url-input');
+        const sendVideoBtn = document.getElementById('btn-send-video');
+        const videoStatus = document.getElementById('video-status');
+
+        if (pairCode) {
+            codeInput.value = pairCode.toUpperCase();
+        }
+        const savedName = localStorage.getItem('last_user_name');
+        if (savedName) {
+            nameInput.value = savedName;
+        }
+
+        async function sendToTesla(payload) {
+            const code = codeInput.value.trim().toUpperCase();
+            if (!code) {
+                alert("Пожалуйста, введите код с экрана Tesla (например, TSLA-XXXX)");
+                return false;
+            }
+            localStorage.setItem('last_tesla_code', code);
+            const topic = `tsla_pair_${code.replace(/[^A-Z0-9]/g, '')}`;
+
+            try {
+                const res = await fetch(`https://ntfy.sh/${topic}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                return res.ok;
+            } catch (e) {
+                console.error("Sync error:", e);
+                return false;
+            }
+        }
+
+        pairBtn.addEventListener('click', async () => {
+            const name = nameInput.value.trim() || "Мой телефон";
+            localStorage.setItem('last_user_name', name);
+            pairBtn.disabled = true;
+            pairBtn.innerText = "Подключение...";
+
+            const ok = await sendToTesla({
+                action: 'pair',
+                name: name,
+                handle: name,
+                timestamp: Date.now()
+            });
+
+            pairBtn.disabled = false;
+            pairBtn.innerText = "🔗 Подключить к Tesla";
+
+            if (ok) {
+                pairStatus.className = "status-msg success";
+                pairStatus.innerText = `✅ Пульт подключён к экрану Tesla.`;
+            } else {
+                alert("Ошибка подключения. Проверьте интернет на телефоне.");
+            }
+        });
+
+        sendVideoBtn.addEventListener('click', async () => {
+            const val = videoInput.value.trim();
+            if (!val) return;
+
+            sendVideoBtn.disabled = true;
+            sendVideoBtn.innerText = "Отправка...";
+
+            const ok = await sendToTesla({
+                action: 'play',
+                urlOrQuery: val,
+                timestamp: Date.now()
+            });
+
+            sendVideoBtn.disabled = false;
+            sendVideoBtn.innerText = "▶ Включить на экране авто";
+
+            if (ok) {
+                videoStatus.className = "status-msg success";
+                videoStatus.innerText = "✅ Видео отправлено и запускается на экране Tesla!";
+                videoInput.value = '';
+                setTimeout(() => { videoStatus.style.display = 'none'; }, 4000);
+            }
+        });
+
+        async function sendCommand(cmd) {
+            await sendToTesla({
+                action: 'command',
+                command: cmd,
+                timestamp: Date.now()
+            });
+        }
+    </script>
+</body>
+</html>
