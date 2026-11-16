@@ -77,16 +77,22 @@
             <div class="stage-close-bar">
                 <div class="now-playing-title" id="now-playing-title">Воспроизведение...</div>
                 <div class="player-engine-selector" id="player-engine-selector">
-                    <button class="engine-pill-btn active" id="engine-btn-clean" onclick="setCinemaEngine('clean')" title="Режим «Без рекламы»: просмотр видео без рекламных вставок">
-                        🛡️ Clean (Без рекламы)
+                    <button class="engine-pill-btn" id="engine-btn-server" onclick="setCinemaEngine('server')" title="Вариант 1: Свой сервер (D/R WebGL Canvas + Audio)">
+                        🚀 Свой Сервер
                     </button>
-                    <button class="engine-pill-btn" id="engine-btn-youtube" onclick="setCinemaEngine('youtube')" title="Официальный плеер YouTube с поддержкой SponsorBlock">
-                        📺 YouTube HD
+                    <button class="engine-pill-btn active" id="engine-btn-cobalt" onclick="setCinemaEngine('cobalt')" title="Вариант 2: Cobalt API (0 рекламы + D/R Canvas)">
+                        ⚡ Cobalt API
+                    </button>
+                    <button class="engine-pill-btn" id="engine-btn-direct" onclick="setCinemaEngine('direct')" title="Вариант 3: Прямой поток / YouTube HD (Iframe)">
+                        📺 Прямой / YouTube
+                    </button>
+                    <button class="engine-pill-btn" id="btn-config-server" onclick="openBackendConfigModal()" title="Настроить адрес своего сервера" style="padding: 5px 8px;">
+                        ⚙️
                     </button>
                 </div>
                 <div class="stage-status-badge" id="stage-status-badge" style="background: rgba(48, 209, 88, 0.15); border-color: rgba(48, 209, 88, 0.4); color: #4ade80;">
                     <span class="badge-dot"></span>
-                    <span id="engine-status-text">🛡️ wBlock: Без рекламы (Clean)</span>
+                    <span id="engine-status-text">⚡ Cobalt API: 0 рекламы (D/R Canvas)</span>
                 </div>
                 <button class="btn-close-stage" id="btn-close-stage" title="Свернуть">✕</button>
             </div>
@@ -305,8 +311,29 @@
         </div>
     </div>
 
-    <!-- Hidden audio element for fallback audio -->
+    <!-- BACKEND CONFIG MODAL -->
+    <div class="yt-modal" id="backend-config-modal" style="display: none;">
+        <div class="yt-modal-content" style="max-width: 480px;">
+            <div class="yt-modal-header">
+                <h2>🚀 Настройка своего сервера (D/R WebGL)</h2>
+                <button class="btn-close-modal" onclick="closeBackendConfigModal()">✕</button>
+            </div>
+            <div class="yt-modal-body" style="padding: 20px;">
+                <p style="color: #bbb; font-size: 13px; line-height: 1.5; margin-bottom: 14px;">
+                    Укажите адрес вашего прокси-сервера (на Render, Railway или домашнего), который достает чистый видеопоток без рекламы для воспроизведения в Drive & Reverse:
+                </p>
+                <input type="text" id="backend-url-input" class="text-input" placeholder="https://my-tesla-backend.onrender.com" style="width: 100%; box-sizing: border-box; margin-bottom: 12px; padding: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 8px;">
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button class="btn-secondary" onclick="closeBackendConfigModal()" style="padding: 8px 16px; border-radius: 8px;">Отмена</button>
+                    <button class="btn-primary" onclick="saveBackendConfig()" style="padding: 8px 16px; border-radius: 8px;">Сохранить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="ogv.js?v=2"></script>
     <script src="youtube-account.js?v=1"></script>
-    <script src="carplay.js?v=6.3"></script>
+    <script src="carplay.js?v=7.0"></script>
 </body>
 </html>

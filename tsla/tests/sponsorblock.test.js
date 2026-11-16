@@ -98,3 +98,72 @@ test('discard a response from a video that has already been replaced', async () 
     await first;
     assert.equal(vm.runInContext('playbackFeatures.currentSegments[0].id', context), 'new');
 });
+
+test('SponsorBlock class instance handles load race conditions and aborts previous request', async () => {
+    const context = createContext();
+    const sb = new context.SponsorBlock(null, { categories: ['intro'] });
+    const requests = [];
+    context.SponsorBlock.fetchSegments = (id, categories, signal) =>
+        new Promise(resolve => requests.push({ id, resolve, signal }));
+
+    const p1 = sb.load('video111111');
+    const p2 = sb.load('video222222');
+
+    assert.equal(requests[0].signal.aborted, true);
+    requests[1].resolve([{ id: 'seg2', start: 0, end: 5, category: 'intro' }]);
+    await p2;
+    requests[0].resolve([{ id: 'seg1', start: 0, end: 5, category: 'intro' }]);
+    await p1;
+
+    assert.equal(sb.segments.length, 1);
+    assert.equal(sb.segments[0].id, 'seg2');
+});
+
+test('SponsorBlock class instance undo prevents re-skipping on subsequent playback checks', () => {
+    const context = createContext();
+    let curTime = 0;
+    const seeks = [];
+    const skippedEvents = [];
+    const undoEvents = [];
+
+    const sb = new context.SponsorBlock(null, {
+        categories: ['sponsor'],
+        getCurrentTime: () => curTime,
+        seekTo: (t) => { seeks.push(t); curTime = t; },
+        onSkip: (ev) => skippedEvents.push(ev),
+        onUndo: (ev) => undoEvents.push(ev)
+    });
+
+    sb.segments = [{ id: 'sponsor1', start: 10, end: 25, category: 'sponsor' }];
+
+    // 1. Playback before segment
+    curTime = 5;
+    sb.check(curTime);
+    assert.equal(seeks.length, 0);
+
+    // 2. Playback enters segment -> triggers seek to end
+    curTime = 10.2;
+    sb.check(curTime);
+    assert.deepEqual(seeks, [25]);
+    assert.equal(skippedEvents.length, 1);
+    assert.equal(sb.count, 1);
+
+    // 3. User clicks Undo -> seeks back to start
+    sb.undo();
+    assert.deepEqual(seeks, [25, 10]);
+    assert.equal(undoEvents.length, 1);
+    assert.equal(sb.count, 0);
+
+    // 4. Video resumes from 10 and plays forward -> MUST NOT RE-SKIP!
+    curTime = 10.5;
+    sb.check(curTime);
+    curTime = 15;
+    sb.check(curTime);
+    curTime = 24.5;
+    sb.check(curTime);
+
+    // Seeks must still only be [25, 10]
+    assert.deepEqual(seeks, [25, 10]);
+    assert.equal(skippedEvents.length, 1);
+    assert.equal(sb.count, 0);
+});

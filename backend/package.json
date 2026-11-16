@@ -1,0 +1,13 @@
+{
+  "name": "tesla-cinema-backend",
+  "version": "1.0.0",
+  "description": "Tesla Cinema in-motion WebGL Canvas video stream proxy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}

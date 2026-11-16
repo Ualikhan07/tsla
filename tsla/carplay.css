@@ -1833,8 +1833,29 @@ html, body {
     opacity: 0.85;
     border-radius: 2px;
 }
+.sponsor-segment-marker.sponsor {
+    background: #00d26a;
+}
 .sponsor-segment-marker.intro {
     background: #00b4d8;
+}
+.sponsor-segment-marker.outro {
+    background: #0284c7;
+}
+.sponsor-segment-marker.selfpromo {
+    background: #f59e0b;
+}
+.sponsor-segment-marker.interaction {
+    background: #ec4899;
+}
+.sponsor-segment-marker.preview {
+    background: #06b6d4;
+}
+.sponsor-segment-marker.music_offtopic {
+    background: #a855f7;
+}
+.sponsor-segment-marker.filler {
+    background: #64748b;
 }
 
 /* wBlock Skip Toast */

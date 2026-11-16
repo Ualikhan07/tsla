@@ -164,25 +164,66 @@ let currentSpeed = 1.0;
 let isPlaying = false;
 let ytPlayer = null;
 let expectedVideoDuration = 0;
+let ogvPlayerInstance = null;
+let ogvSyncInterval = null;
 
-// Dual Player Engine: 'clean' (0 Ads, Piped/Invidious proxy) or 'youtube' (Official YouTube HD)
-let currentCinemaEngine = localStorage.getItem('cinema_player_engine') || 'clean';
+// 3-Engine Switcher:
+// 1. 'server' : Свой прокси-сервер (D/R WebGL Canvas + Audio) - Teslatelek-Style
+// 2. 'cobalt' : Публичный Cobalt API (D/R WebGL Canvas + Audio) - 0 Ads, no server needed
+// 3. 'direct' : Прямой медиапоток / YouTube Iframe HD (SponsorBlock)
+let currentCinemaEngine = localStorage.getItem('cinema_player_engine') || 'cobalt';
 let isYTAPILoaded = false;
 
 window.onYouTubeIframeAPIReady = function() {
     console.log("[Tesla Cinema] YouTube IFrame API Ready");
     isYTAPILoaded = true;
-    if (currentPlayingVideoId && currentCinemaEngine === 'youtube' && !ytPlayer) {
+    if (currentPlayingVideoId && currentCinemaEngine === 'direct' && !ytPlayer) {
         bindYTPlayer();
     }
 };
 
+function cleanupCurrentPlayer() {
+    if (ogvSyncInterval) {
+        clearInterval(ogvSyncInterval);
+        ogvSyncInterval = null;
+    }
+    if (ogvPlayerInstance) {
+        try {
+            ogvPlayerInstance.pause();
+            ogvPlayerInstance.src = "";
+            ogvPlayerInstance.remove();
+        } catch(e) {}
+        ogvPlayerInstance = null;
+    }
+    if (audioEl) {
+        try {
+            audioEl.pause();
+            audioEl.src = "";
+        } catch(e) {}
+    }
+    const mount = document.getElementById('canvas-player-mount');
+    if (mount) mount.innerHTML = "";
+    ytPlayer = null;
+}
+window.cleanupCurrentPlayer = cleanupCurrentPlayer;
+
 function setCinemaEngine(engine) {
-    if (engine !== 'clean' && engine !== 'youtube') return;
+    if (engine !== 'server' && engine !== 'cobalt' && engine !== 'direct') return;
     currentCinemaEngine = engine;
     localStorage.setItem('cinema_player_engine', engine);
     updateEngineUI();
-    wBlock.showCustomToast(engine === 'clean' ? "🛡️ Режим «Без рекламы» активирован" : "⚡ Режим «YouTube HD» активирован");
+
+    if (engine === 'server' && !localStorage.getItem('cinema_backend_url')) {
+        openBackendConfigModal();
+        return;
+    }
+
+    const titles = {
+        'server': '🚀 Режим «Свой Сервер» (D/R WebGL Canvas)',
+        'cobalt': '⚡ Режим «Cobalt API» (0 рекламы + D/R Canvas)',
+        'direct': '📺 Режим «YouTube HD / Прямой URL»'
+    };
+    wBlock.showCustomToast(titles[engine] || engine);
 
     if (currentPlayingVideoId) {
         const curSec = Math.floor(getCurrentTime() || 0);
@@ -192,32 +233,76 @@ function setCinemaEngine(engine) {
 window.setCinemaEngine = setCinemaEngine;
 
 function toggleCinemaEngine() {
-    setCinemaEngine(currentCinemaEngine === 'clean' ? 'youtube' : 'clean');
+    const sequence = ['cobalt', 'server', 'direct'];
+    const nextIdx = (sequence.indexOf(currentCinemaEngine) + 1) % sequence.length;
+    setCinemaEngine(sequence[nextIdx]);
 }
 window.toggleCinemaEngine = toggleCinemaEngine;
 
 function updateEngineUI() {
-    const btnClean = document.getElementById('engine-btn-clean');
-    const btnYT = document.getElementById('engine-btn-youtube');
+    const btnServer = document.getElementById('engine-btn-server');
+    const btnCobalt = document.getElementById('engine-btn-cobalt');
+    const btnDirect = document.getElementById('engine-btn-direct');
     const badgeText = document.getElementById('engine-status-text');
 
-    if (btnClean) btnClean.classList.toggle('active', currentCinemaEngine === 'clean');
-    if (btnYT) btnYT.classList.toggle('active', currentCinemaEngine === 'youtube');
+    if (btnServer) btnServer.classList.toggle('active', currentCinemaEngine === 'server');
+    if (btnCobalt) btnCobalt.classList.toggle('active', currentCinemaEngine === 'cobalt');
+    if (btnDirect) btnDirect.classList.toggle('active', currentCinemaEngine === 'direct');
+
     if (badgeText) {
-        badgeText.innerText = (currentCinemaEngine === 'clean')
-            ? "🛡️ wBlock: Без рекламы (Clean)"
-            : "⚡ wBlock: YouTube HD + SponsorBlock";
+        if (currentCinemaEngine === 'server') {
+            badgeText.innerText = "🚀 Свой Сервер: D/R Canvas (0 Ads)";
+        } else if (currentCinemaEngine === 'cobalt') {
+            badgeText.innerText = "⚡ Cobalt API: D/R Canvas (0 Ads)";
+        } else {
+            badgeText.innerText = "📺 YouTube HD + SponsorBlock";
+        }
     }
     const statEl = document.getElementById('wblock-stat');
     if (statEl) {
-        if (currentCinemaEngine === 'clean') {
-            statEl.innerText = "0 рекламы (Clean)";
+        if (currentCinemaEngine === 'server' || currentCinemaEngine === 'cobalt') {
+            statEl.innerText = "D/R Canvas (0 Ads)";
         } else {
             statEl.innerText = `${wBlock.skippedCount} ad/skip`;
         }
     }
 }
 window.updateEngineUI = updateEngineUI;
+
+// Backend Config Modal handlers
+function openBackendConfigModal() {
+    const modal = document.getElementById('backend-config-modal');
+    const input = document.getElementById('backend-url-input');
+    if (input) {
+        input.value = localStorage.getItem('cinema_backend_url') || '';
+    }
+    if (modal) modal.style.display = 'flex';
+}
+window.openBackendConfigModal = openBackendConfigModal;
+
+function closeBackendConfigModal() {
+    const modal = document.getElementById('backend-config-modal');
+    if (modal) modal.style.display = 'none';
+}
+window.closeBackendConfigModal = closeBackendConfigModal;
+
+function saveBackendConfig() {
+    const input = document.getElementById('backend-url-input');
+    if (input) {
+        const val = input.value.trim().replace(/\/+$/, '');
+        if (val) {
+            localStorage.setItem('cinema_backend_url', val);
+            wBlock.showCustomToast("✅ Адрес своего сервера сохранен");
+        } else {
+            localStorage.removeItem('cinema_backend_url');
+        }
+    }
+    closeBackendConfigModal();
+    if (currentPlayingVideoId && currentCinemaEngine === 'server') {
+        mountVideoPlayer(currentPlayingVideoId, Math.floor(getCurrentTime() || 0));
+    }
+}
+window.saveBackendConfig = saveBackendConfig;
 
 // Auto-Play Next State & Queue
 let currentVideoQueue = [];
@@ -1604,6 +1689,8 @@ const wBlock = {
     savedSpeed: 1.0,
     autoSkipTimer: null,
     sb: null,
+    fetchAbortController: null,
+    fetchRequestId: 0,
 
     initSponsorBlock(playerInstance) {
         if (typeof SponsorBlock === 'undefined') return;
@@ -1611,13 +1698,23 @@ const wBlock = {
             const counterEl = document.getElementById('wblock-stat');
             this.sb = new SponsorBlock(playerInstance || ytPlayer, {
                 categories: ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro'],
-                minDuration: 1,
+                minDuration: 0.8,
+                getCurrentTime: () => getCurrentTime(),
+                seekTo: (time) => seekTo(time),
                 onSkip: ({ category, from, to, count }) => {
                     this.skippedCount = count;
-                    if (counterEl) {
+                    this.lastSkippedSegment = this.sb.lastSkip;
+                    if (counterEl && currentCinemaEngine !== 'clean') {
                         counterEl.textContent = `🛡️ SponsorBlock ${count}`;
                     }
                     this.showToast(category);
+                },
+                onUndo: ({ category, count }) => {
+                    this.skippedCount = count;
+                    this.lastSkippedSegment = null;
+                    this.updateUI();
+                    const toast = document.getElementById('wblock-skip-toast');
+                    if (toast) toast.style.display = 'none';
                 }
             });
             window.sb = this.sb;
@@ -1684,29 +1781,54 @@ const wBlock = {
         this.clearMarkers();
         this.skippedSegmentIds = new Set();
         this.lastSkippedSegment = null;
-        if (!videoId || !this.sponsorBlockEnabled) return;
+        if (!videoId || !this.sponsorBlockEnabled) return [];
+
+        if (this.fetchAbortController) {
+            try { this.fetchAbortController.abort(); } catch(e) {}
+        }
+        this.fetchAbortController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        const signal = this.fetchAbortController ? this.fetchAbortController.signal : null;
+        const currentReq = ++this.fetchRequestId;
 
         try {
-            if (!this.sb) {
+            if (!this.sb && typeof SponsorBlock !== 'undefined') {
                 this.initSponsorBlock(ytPlayer);
-            } else if (ytPlayer) {
-                this.sb.setPlayer(ytPlayer);
+            }
+            if (this.sb) {
+                this.sb.videoId = videoId;
             }
 
-            if (this.sb) {
-                await this.sb.load(videoId);
-                this.currentSegments = this.sb.segments || [];
-                if (this.currentSegments.length > 0) {
-                    console.log(`[wBlock] Loaded ${this.currentSegments.length} SponsorBlock segments for ${videoId}`);
-                    this.setStat(`${this.currentSegments.length} спонсор(ов)`);
-                    this.renderMarkers();
-                    return;
-                }
+            const categories = this.sb ? this.sb.categories : ['sponsor', 'selfpromo', 'interaction', 'intro', 'outro'];
+            const segments = (typeof SponsorBlock !== 'undefined' && SponsorBlock.load)
+                ? await SponsorBlock.load(videoId, categories, signal)
+                : [];
+
+            if (currentReq !== this.fetchRequestId || (signal && signal.aborted)) {
+                return this.currentSegments;
             }
-            this.setStat('Чисто');
+
+            this.currentSegments = segments || [];
+            if (this.sb) {
+                this.sb.segments = this.currentSegments;
+                this.sb.ignored.clear();
+                this.sb.undone.clear();
+                this.sb.lastSkip = null;
+            }
+
+            if (this.currentSegments.length > 0) {
+                console.log(`[wBlock] Loaded ${this.currentSegments.length} SponsorBlock segments for ${videoId}`);
+                this.setStat(`${this.currentSegments.length} спонсор(ов)`);
+                this.renderMarkers();
+            } else {
+                this.setStat('Чисто');
+            }
+            return this.currentSegments;
         } catch (e) {
+            if (e && e.name === 'AbortError') return [];
+            if (currentReq !== this.fetchRequestId) return this.currentSegments;
             console.warn("[wBlock] SponsorBlock fetch error:", e);
             this.setStat('Чисто');
+            return [];
         }
     },
 
@@ -1736,29 +1858,44 @@ const wBlock = {
         this.markersRendered = false;
         this.skippedSegmentIds = new Set();
         this.lastSkippedSegment = null;
+        if (this.sb) {
+            this.sb.clear();
+        }
     },
 
-    checkAndSkip(currentTime) {
-        if (!this.enabled || !this.sponsorBlockEnabled || !this.currentSegments || !this.currentSegments.length) return;
+    checkAndSkip(currentTime, duration) {
+        if (!this.enabled || !this.sponsorBlockEnabled) return;
+        if (this.isAdAccelerated) return;
+        if (!this.currentSegments || !this.currentSegments.length) return;
         if (this.isSkipping) return;
+
+        const t = (typeof currentTime === 'number' && !isNaN(currentTime)) ? currentTime : getCurrentTime();
+        if (typeof t !== 'number' || isNaN(t)) return;
 
         for (const seg of this.currentSegments) {
             if (this.skippedSegmentIds.has(seg.id)) continue;
 
-            if (currentTime >= (seg.start - 0.2) && currentTime < (seg.end - 0.3)) {
+            if (t >= (seg.start - 0.2) && t < (seg.end - 0.3)) {
                 this.isSkipping = true;
                 this.skippedSegmentIds.add(seg.id);
                 this.lastSkippedSegment = seg;
+                if (this.sb) {
+                    this.sb.ignored.add(seg.id);
+                    this.sb.lastSkip = seg;
+                }
 
                 console.log(`[wBlock] Auto-skipping ${seg.category} (${seg.start.toFixed(1)}s -> ${seg.end.toFixed(1)}s)`);
                 seekTo(seg.end);
                 this.skippedCount++;
+                try { localStorage.setItem('sb_count', String(this.skippedCount)); } catch(e) {}
+                if (this.sb) this.sb.count = this.skippedCount;
+
                 this.updateUI();
                 this.showToast(seg.category);
 
                 setTimeout(() => {
                     this.isSkipping = false;
-                }, 1000);
+                }, 600);
                 break;
             }
         }
@@ -1828,6 +1965,15 @@ const wBlock = {
         } else if (category === 'outro') {
             catName = 'титры/концовка';
             if (undoBtn) undoBtn.style.display = 'inline-block';
+        } else if (category === 'preview') {
+            catName = 'анонс/превью';
+            if (undoBtn) undoBtn.style.display = 'inline-block';
+        } else if (category === 'music_offtopic') {
+            catName = 'немузыкальная вставка';
+            if (undoBtn) undoBtn.style.display = 'inline-block';
+        } else if (category === 'filler') {
+            catName = 'отступление от темы';
+            if (undoBtn) undoBtn.style.display = 'inline-block';
         }
         msg.innerText = `🛡️ wBlock: Пропущен(а) ${catName}`;
         toast.style.display = 'flex';
@@ -1839,25 +1985,37 @@ const wBlock = {
     },
 
     undoLastSkip() {
+        if (this.lastSkippedSegment) {
+            const seg = this.lastSkippedSegment;
+            seekTo(Math.max(0, seg.start));
+            this.skippedSegmentIds.add(seg.id);
+            if (this.sb) {
+                this.sb.undone.add(seg.id);
+                this.sb.ignored.add(seg.id);
+                this.sb.lastSkip = null;
+            }
+            this.lastSkippedSegment = null;
+            if (this.skippedCount > 0) this.skippedCount--;
+            try { localStorage.setItem('sb_count', String(this.skippedCount)); } catch(e) {}
+            if (this.sb) this.sb.count = this.skippedCount;
+            this.updateUI();
+            const toast = document.getElementById('wblock-skip-toast');
+            if (toast) toast.style.display = 'none';
+            return;
+        }
         if (this.sb && this.sb.lastSkip) {
             this.sb.undo();
             this.skippedCount = this.sb.count;
             this.updateUI();
             const toast = document.getElementById('wblock-skip-toast');
             if (toast) toast.style.display = 'none';
-            return;
-        }
-        if (this.lastSkippedSegment) {
-            seekTo(Math.max(0, this.lastSkippedSegment.start - 0.5));
-            this.skippedSegmentIds.add(this.lastSkippedSegment.id);
-            this.lastSkippedSegment = null;
-            if (this.skippedCount > 0) this.skippedCount--;
-            this.updateUI();
-            const toast = document.getElementById('wblock-skip-toast');
-            if (toast) toast.style.display = 'none';
         }
     }
 };
+
+const playbackFeatures = wBlock;
+window.wBlock = wBlock;
+window.playbackFeatures = playbackFeatures;
 
 function skipAdForce() {
     if (!currentPlayingVideoId) return;
